@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build outputs
+android/build/
+ios/build/
+dist/
+lib/
+
+# generated examples and local test apps
+example/
+RTLReactNativeExample/
+
+# package artifacts
+*.tgz
+
+# CocoaPods / Xcode
+ios/Pods/
+*.xcuserstate
+xcuserdata/
+
+# local files
+.DS_Store
+.env*
+npm-debug.log*
+yarn-error.log*
