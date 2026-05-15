@@ -1,4 +1,4 @@
-# RTL SDK for iOS
+# RTL SDK for React native
 
 See the public RTL developer documentation:
 
