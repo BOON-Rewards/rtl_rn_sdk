@@ -1,7 +1,6 @@
 package com.affina.rtlsdk.reactnative
 
 import android.app.Activity
-import com.affina.rtlsdk.RTLEnvironment
 import com.affina.rtlsdk.RTLSdkPermissionRequester
 import com.affina.rtlsdk.RTLSdk
 import com.affina.rtlsdk.RTLSdkListener
@@ -62,29 +61,18 @@ class RTLSdkModule(
             return
         }
 
-        val program = options.getString("program")
-        val environment = options.getString("environment")
-        val urlScheme = options.getString("urlScheme")
+        val baseUrl = options.getNullableString("baseUrl")
+        val urlScheme = options.getNullableString("urlScheme")
         val externalChapterId = options.getNullableString("externalChapterId")
 
-        if (program.isNullOrBlank() || environment.isNullOrBlank() || urlScheme.isNullOrBlank()) {
-            promise.reject("invalid_options", "program, environment, and urlScheme are required")
+        if (baseUrl.isNullOrBlank() || urlScheme.isNullOrBlank()) {
+            promise.reject("invalid_options", "baseUrl and urlScheme are required")
             return
-        }
-
-        val rtlEnvironment = when (environment.lowercase()) {
-            "staging" -> RTLEnvironment.STAGING
-            "production" -> RTLEnvironment.PRODUCTION
-            else -> {
-                promise.reject("invalid_environment", "environment must be staging or production")
-                return
-            }
         }
 
         try {
             RTLSdk.getInstance().initialize(
-                program = program,
-                environment = rtlEnvironment,
+                baseUrl = baseUrl,
                 urlScheme = urlScheme,
                 context = activity,
                 listener = this,

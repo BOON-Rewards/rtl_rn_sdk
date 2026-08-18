@@ -37,29 +37,20 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         resolver resolve: RCTPromiseResolveBlock,
         rejecter reject: RCTPromiseRejectBlock
     ) {
-        guard let program = options["program"] as? String, !program.isEmpty,
-              let environmentValue = options["environment"] as? String, !environmentValue.isEmpty,
+        guard let baseUrlValue = options["baseUrl"] as? String, !baseUrlValue.isEmpty,
+              let baseURL = URL(string: baseUrlValue),
+              let scheme = baseURL.scheme?.lowercased(),
+              scheme == "https" || scheme == "http",
+              baseURL.host != nil,
               let urlScheme = options["urlScheme"] as? String, !urlScheme.isEmpty else {
-            reject("invalid_options", "program, environment, and urlScheme are required", nil)
-            return
-        }
-
-        let environment: RTLEnvironment
-        switch environmentValue.lowercased() {
-        case "staging":
-            environment = .staging
-        case "production":
-            environment = .production
-        default:
-            reject("invalid_environment", "environment must be staging or production", nil)
+            reject("invalid_options", "baseUrl must be a complete HTTP(S) URL and urlScheme is required", nil)
             return
         }
 
         let externalChapterId = options["externalChapterId"] as? String
 
         RTLSdk.shared.initialize(
-            program: program,
-            environment: environment,
+            baseURL: baseURL,
             urlScheme: urlScheme,
             delegate: self,
             externalChapterId: externalChapterId
