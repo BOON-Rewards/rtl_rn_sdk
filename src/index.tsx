@@ -9,11 +9,8 @@ import {
   type ViewProps,
 } from 'react-native';
 
-export type RTLEnvironment = 'staging' | 'production';
-
 export type RTLInitializeOptions = {
-  program: string;
-  environment: RTLEnvironment;
+  baseUrl: string;
   urlScheme: string;
   externalChapterId?: string;
 };
