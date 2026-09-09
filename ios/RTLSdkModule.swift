@@ -5,18 +5,35 @@ import RTLSdk
 @objc(RTLSdkModule)
 final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
     private var hasListeners = false
-    private var pendingTokenContinuations: [String: CheckedContinuation<String?, Never>] = [:]
+    private struct TokenRequest {
+        let continuation: CheckedContinuation<String?, Never>
+        let timeout: DispatchWorkItem
+    }
+    // Accessed only on the main queue, including async delegate callbacks.
+    private var pendingAuthTokenRequests: [String: TokenRequest] = [:]
 
     override static func requiresMainQueueSetup() -> Bool {
         true
     }
 
+    override var methodQueue: DispatchQueue! { DispatchQueue.main }
+
+    override func invalidate() {
+        // RN may invalidate modules off their method queue. The base emitter
+        // calls stopObserving(), so its cleanup must run on main too.
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [self] in invalidate() }
+            return
+        }
+        hasListeners = false
+        cancelAuthTokenRequests()
+        super.invalidate()
+    }
+
     override func supportedEvents() -> [String]! {
         [
-            "onNeedsToken",
-            "onAuthenticated",
-            "onLogout",
-            "onOpenUrl",
+            "authTokenRequested",
+            "onLoadingStateChanged",
             "onReady",
             "onLocationPermissionChange",
             "onGeofenceEnter"
@@ -29,6 +46,7 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
 
     override func stopObserving() {
         hasListeners = false
+        cancelAuthTokenRequests()
     }
 
     @objc(initialize:resolver:rejecter:)
@@ -49,6 +67,7 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
 
         let externalChapterId = options["externalChapterId"] as? String
 
+        cancelAuthTokenRequests()
         RTLSdk.shared.initialize(
             baseURL: baseURL,
             urlScheme: urlScheme,
@@ -73,26 +92,25 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         }
     }
 
-    @objc(login:options:resolver:rejecter:)
-    func login(
-        _ token: String,
-        options: NSDictionary?,
+    @objc(handleDeepLink:resolver:rejecter:)
+    func handleDeepLink(
+        _ urlValue: String,
         resolver resolve: @escaping RCTPromiseResolveBlock,
-        rejecter reject: @escaping RCTPromiseRejectBlock
+        rejecter reject: RCTPromiseRejectBlock
     ) {
+        guard let url = URL(string: urlValue) else {
+            resolve(false)
+            return
+        }
         Task { @MainActor in
-            let result = await RTLSdk.shared.login(
-                token: token,
-                rtlEventId: options?["rtlEventId"] as? String,
-                rtlRedirectUrl: options?["rtlRedirectUrl"] as? String
-            )
-            resolve(result.toDictionary())
+            resolve(RTLSdk.shared.handleDeepLink(url))
         }
     }
 
     @objc(logout)
     func logout() {
         RTLSdk.shared.logout()
+        cancelAuthTokenRequests()
     }
 
     @objc(enableLocationFeatures:rejecter:)
@@ -109,18 +127,6 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         RTLSdk.shared.disableLocationFeatures()
     }
 
-    @objc(isLoggedIn:rejecter:)
-    func isLoggedIn(
-        _ resolve: RCTPromiseResolveBlock,
-        rejecter reject: RCTPromiseRejectBlock
-    ) {
-        if let isLoggedIn = RTLSdk.shared.isLoggedIn() {
-            resolve(isLoggedIn)
-        } else {
-            resolve(NSNull())
-        }
-    }
-
     @objc(hasLocationPermission:rejecter:)
     func hasLocationPermission(
         _ resolve: RCTPromiseResolveBlock,
@@ -129,52 +135,54 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         resolve(RTLSdk.shared.hasLocationPermission)
     }
 
-    @objc(provideToken:token:)
-    func provideToken(_ requestId: String, token: String?) {
-        guard let continuation = pendingTokenContinuations.removeValue(forKey: requestId) else {
-            return
-        }
-        continuation.resume(returning: token)
+    @objc(resolveAuthTokenRequest:token:)
+    func resolveAuthTokenRequest(_ requestId: String, token: String?) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard let request = pendingAuthTokenRequests.removeValue(forKey: requestId) else { return }
+        request.timeout.cancel()
+        request.continuation.resume(returning: token)
     }
 
-    func onNeedsToken() async -> String? {
-        await withCheckedContinuation { continuation in
-            let requestId = UUID().uuidString
-            pendingTokenContinuations[requestId] = continuation
-            send("onNeedsToken", body: ["requestId": requestId])
+    private func cancelAuthTokenRequests() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        for id in Array(pendingAuthTokenRequests.keys) {
+            resolveAuthTokenRequest(id, token: nil)
+        }
+    }
 
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
-                await MainActor.run {
-                    guard let continuation = self?.pendingTokenContinuations.removeValue(forKey: requestId) else {
-                        return
-                    }
-                    continuation.resume(returning: nil)
+    func provideAuthToken() async -> String? {
+        await requestAuthToken()
+    }
+
+    @MainActor
+    private func requestAuthToken() async -> String? {
+        let requestId = UUID().uuidString
+        let cancelRequest: @MainActor @Sendable () -> Void = { [weak self] in
+            self?.resolveAuthTokenRequest(requestId, token: nil)
+        }
+        return await withTaskCancellationHandler {
+            guard !Task.isCancelled, hasListeners else { return nil }
+            return await withCheckedContinuation { continuation in
+                let timeout = DispatchWorkItem { [weak self] in
+                    self?.resolveAuthTokenRequest(requestId, token: nil)
                 }
+                pendingAuthTokenRequests[requestId] = TokenRequest(
+                    continuation: continuation, timeout: timeout
+                )
+                DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: timeout)
+                send("authTokenRequested", body: ["requestId": requestId])
             }
+        } onCancel: {
+            Task { @MainActor in cancelRequest() }
         }
-    }
-
-    func onAuthenticated(accessToken: String, refreshToken: String) {
-        send("onAuthenticated", body: [
-            "accessToken": accessToken,
-            "refreshToken": refreshToken
-        ])
-    }
-
-    func onLogout() {
-        send("onLogout", body: nil)
-    }
-
-    func onOpenUrl(url: URL, forceExternal: Bool) {
-        send("onOpenUrl", body: [
-            "url": url.absoluteString,
-            "forceExternal": forceExternal
-        ])
     }
 
     func onReady() {
         send("onReady", body: nil)
+    }
+
+    func onLoadingStateChanged(isLoading: Bool) {
+        send("onLoadingStateChanged", body: ["isLoading": isLoading])
     }
 
     func onLocationPermissionChange(granted: Bool) {
@@ -188,8 +196,12 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
     }
 
     private func send(_ eventName: String, body: Any?) {
-        guard hasListeners else { return }
-        sendEvent(withName: eventName, body: body)
+        let emit = { [self] in
+            guard hasListeners else { return }
+            sendEvent(withName: eventName, body: body)
+        }
+        if Thread.isMainThread { emit() }
+        else { DispatchQueue.main.async(execute: emit) }
     }
 }
 

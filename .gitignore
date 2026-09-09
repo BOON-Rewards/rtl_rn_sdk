@@ -3,7 +3,11 @@ node_modules/
 
 # build outputs
 android/build/
+android/.gradle/
+android/.cxx/
+android/.externalNativeBuild/
 ios/build/
+ios/DerivedData/
 dist/
 lib/
 
@@ -16,8 +20,16 @@ RTLReactNativeExample/
 
 # CocoaPods / Xcode
 ios/Pods/
+ios/.swiftpm/
 *.xcuserstate
 xcuserdata/
+
+# Android local configuration / IDE files
+android/local.properties
+android/.idea/
+android/*.iml
+.idea/
+*.iml
 
 # local files
 .DS_Store
