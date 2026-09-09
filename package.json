@@ -1,6 +1,6 @@
 {
   "name": "react-native-rtl-sdk",
-  "version": "0.1.0",
+  "version": "2.1.0",
   "description": "React Native wrapper for the RTL native iOS and Android SDKs.",
   "repository": {
     "type": "git",
@@ -10,7 +10,8 @@
   "types": "src/index.tsx",
   "react-native": "src/index.tsx",
   "files": [
-    "android",
+    "android/build.gradle",
+    "android/src",
     "ios",
     "src",
     "react-native-rtl-sdk.podspec",
@@ -23,12 +24,17 @@
     "@babel/runtime": "^7.20.0"
   },
   "peerDependencies": {
-    "react": ">=18",
-    "react-native": ">=0.72"
+    "react": "^19.2.3",
+    "react-native": "0.86.x || 0.87.x"
   },
   "devDependencies": {
-    "@types/react": "^18.2.0",
-    "typescript": "^5.4.0"
+    "@types/react": "^19.2.0",
+    "react": "19.2.3",
+    "react-native": "0.87.1",
+    "typescript": "^6.0.3"
   },
-  "license": "Proprietary"
+  "license": "Proprietary",
+  "engines": {
+    "node": "^22.13.0 || ^24.3.0 || >=26.0.0"
+  }
 }
