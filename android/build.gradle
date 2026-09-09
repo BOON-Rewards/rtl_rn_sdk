@@ -5,7 +5,7 @@ buildscript {
   }
 
   dependencies {
-    def kotlinVersion = rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : '1.9.20'
+    def kotlinVersion = rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : '2.2.0'
     classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
   }
 }
@@ -18,11 +18,11 @@ def getExtOrDefault(name, fallback) {
 }
 
 android {
-  namespace 'com.affina.rtlsdk.reactnative'
-  compileSdkVersion getExtOrDefault('compileSdkVersion', 35)
+  namespace 'com.affinaloyalty.rtlsdk.reactnative'
+  compileSdkVersion getExtOrDefault('compileSdkVersion', 36)
 
   defaultConfig {
-    minSdkVersion getExtOrDefault('minSdkVersion', 23)
+    minSdkVersion getExtOrDefault('minSdkVersion', 24)
   }
 
   compileOptions {
@@ -39,6 +39,6 @@ dependencies {
   implementation 'com.facebook.react:react-android'
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3'
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
-  implementation 'com.affina:rtl-sdk-core:1.0.1'
-  implementation 'com.affina:rtl-sdk-location:1.0.1'
+  implementation 'com.affinaloyalty:rtl-sdk-core:2.1.1'
+  implementation 'com.affinaloyalty:rtl-sdk-location:2.1.1'
 }
