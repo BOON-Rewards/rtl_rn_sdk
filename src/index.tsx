@@ -9,7 +9,19 @@ import {
   type ViewProps,
 } from 'react-native';
 
+export type RTLAuthTokenProvider = () =>
+  | Promise<string | null>
+  | string
+  | null;
+
 export type RTLInitializeOptions = {
+  baseUrl: string;
+  urlScheme: string;
+  externalChapterId?: string;
+  authTokenProvider: RTLAuthTokenProvider;
+};
+
+type RTLNativeInitializeOptions = {
   baseUrl: string;
   urlScheme: string;
   externalChapterId?: string;
@@ -25,22 +37,16 @@ export type RTLExperienceResult = {
   errorCode?: string | null;
 };
 
-export type RTLTokenRequestEvent = {
+type RTLAuthTokenRequestEvent = {
   requestId: string;
-};
-
-export type RTLOpenUrlEvent = {
-  url: string;
-  forceExternal: boolean;
-};
-
-export type RTLAuthenticatedEvent = {
-  accessToken: string;
-  refreshToken: string;
 };
 
 export type RTLLocationPermissionChangeEvent = {
   granted: boolean;
+};
+
+type RTLLoadingStateChangeEvent = {
+  isLoading: boolean;
 };
 
 export type RTLGeofenceEnterEvent = {
@@ -48,15 +54,14 @@ export type RTLGeofenceEnterEvent = {
 };
 
 type RTLSdkNativeModule = {
-  initialize(options: RTLInitializeOptions): Promise<void>;
+  initialize(options: RTLNativeInitializeOptions): Promise<void>;
   presentExperience(options?: RTLExperienceOptions): Promise<RTLExperienceResult>;
-  login(token: string, options?: RTLExperienceOptions): Promise<RTLExperienceResult>;
+  handleDeepLink(url: string): Promise<boolean>;
   logout(): void;
   enableLocationFeatures(): Promise<void>;
   disableLocationFeatures(): void;
-  isLoggedIn(): Promise<boolean | null>;
   hasLocationPermission(): Promise<boolean>;
-  provideToken(requestId: string, token?: string | null): void;
+  resolveAuthTokenRequest(requestId: string, token: string | null): void;
 };
 
 const LINKING_ERROR =
@@ -71,6 +76,25 @@ if (!NativeRTLSdk) {
 }
 
 const eventEmitter = new NativeEventEmitter(NativeModules.RTLSdk);
+let authTokenSubscription: EmitterSubscription | null = null;
+
+// NativeEventEmitter exposes untyped payloads; keep our native event contract here.
+type RTLEventMap = {
+  onLoadingStateChanged: RTLLoadingStateChangeEvent;
+  onLocationPermissionChange: RTLLocationPermissionChangeEvent;
+  onGeofenceEnter: RTLGeofenceEnterEvent;
+  authTokenRequested: RTLAuthTokenRequestEvent;
+};
+
+function subscribe<K extends keyof RTLEventMap>(
+  name: K,
+  listener: (event: RTLEventMap[K]) => unknown
+): EmitterSubscription {
+  return eventEmitter.addListener(name, (event: unknown) =>
+    listener(event as RTLEventMap[K])
+  );
+}
+
 
 const NativeRTLView = requireNativeComponent<ViewProps>('RTLView') as HostComponent<ViewProps>;
 
@@ -78,39 +102,63 @@ export function RTLView(props: ViewProps) {
   return <NativeRTLView {...props} />;
 }
 
-const onNeedsToken = (listener: (event: RTLTokenRequestEvent) => void): EmitterSubscription =>
-  eventEmitter.addListener('onNeedsToken', listener);
-
 const onReady = (listener: () => void): EmitterSubscription =>
   eventEmitter.addListener('onReady', listener);
 
-const onAuthenticated = (listener: (event: RTLAuthenticatedEvent) => void): EmitterSubscription =>
-  eventEmitter.addListener('onAuthenticated', listener);
-
-const onLogout = (listener: () => void): EmitterSubscription =>
-  eventEmitter.addListener('onLogout', listener);
-
-const onOpenUrl = (listener: (event: RTLOpenUrlEvent) => void): EmitterSubscription =>
-  eventEmitter.addListener('onOpenUrl', listener);
+const onLoadingStateChanged = (
+  listener: (isLoading: boolean) => void
+): EmitterSubscription =>
+  subscribe(
+    'onLoadingStateChanged',
+    (event: RTLLoadingStateChangeEvent) => listener(event.isLoading)
+  );
 
 const onLocationPermissionChange = (
   listener: (event: RTLLocationPermissionChangeEvent) => void
-): EmitterSubscription => eventEmitter.addListener('onLocationPermissionChange', listener);
+): EmitterSubscription => subscribe('onLocationPermissionChange', listener);
 
 const onGeofenceEnter = (listener: (event: RTLGeofenceEnterEvent) => void): EmitterSubscription =>
-  eventEmitter.addListener('onGeofenceEnter', listener);
+  subscribe('onGeofenceEnter', listener);
 
 export const RTL = {
   initialize(options: RTLInitializeOptions) {
-    return NativeRTLSdk.initialize(options);
+    const { authTokenProvider, ...nativeOptions } = options;
+    if (typeof authTokenProvider !== 'function') {
+      return Promise.reject(new Error('authTokenProvider is required'));
+    }
+
+    authTokenSubscription?.remove();
+    const subscription = subscribe(
+      'authTokenRequested',
+      async (event: RTLAuthTokenRequestEvent) => {
+        let token: string | null = null;
+        try {
+          const providedToken = await authTokenProvider();
+          token = typeof providedToken === 'string' ? providedToken : null;
+        } catch {
+          token = null;
+        }
+        NativeRTLSdk.resolveAuthTokenRequest(event.requestId, token);
+      }
+    );
+    authTokenSubscription = subscription;
+
+    const initialization = NativeRTLSdk.initialize(nativeOptions);
+    return initialization.catch(error => {
+      if (authTokenSubscription === subscription) {
+        subscription.remove();
+        authTokenSubscription = null;
+      }
+      throw error;
+    });
   },
 
   presentExperience(options?: RTLExperienceOptions) {
     return NativeRTLSdk.presentExperience(options ?? {});
   },
 
-  login(token: string, options?: RTLExperienceOptions) {
-    return NativeRTLSdk.login(token, options ?? {});
+  handleDeepLink(url: string) {
+    return NativeRTLSdk.handleDeepLink(url);
   },
 
   logout() {
@@ -125,33 +173,14 @@ export const RTL = {
     NativeRTLSdk.disableLocationFeatures();
   },
 
-  isLoggedIn() {
-    return NativeRTLSdk.isLoggedIn();
-  },
-
   hasLocationPermission() {
     return NativeRTLSdk.hasLocationPermission();
   },
 
-  provideToken(requestId: string, token?: string | null) {
-    NativeRTLSdk.provideToken(requestId, token ?? null);
-  },
-
-  onNeedsToken,
   onReady,
-  onAuthenticated,
-  onLogout,
-  onOpenUrl,
+  onLoadingStateChanged,
   onLocationPermissionChange,
   onGeofenceEnter,
-
-  addTokenRequestListener: onNeedsToken,
-  addReadyListener: onReady,
-  addAuthenticatedListener: onAuthenticated,
-  addLogoutListener: onLogout,
-  addOpenUrlListener: onOpenUrl,
-  addLocationPermissionChangeListener: onLocationPermissionChange,
-  addGeofenceEnterListener: onGeofenceEnter,
 };
 
 export default RTL;

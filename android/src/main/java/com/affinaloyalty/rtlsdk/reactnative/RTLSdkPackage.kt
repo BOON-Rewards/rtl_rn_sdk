@@ -1,4 +1,4 @@
-package com.affina.rtlsdk.reactnative
+package com.affinaloyalty.rtlsdk.reactnative
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
