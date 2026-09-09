@@ -12,8 +12,7 @@ RCT_EXTERN_METHOD(presentExperience:(NSDictionary *)options
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
-RCT_EXTERN_METHOD(login:(NSString *)token
-                  options:(NSDictionary *)options
+RCT_EXTERN_METHOD(handleDeepLink:(NSString *)url
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
@@ -24,14 +23,11 @@ RCT_EXTERN_METHOD(enableLocationFeatures:(RCTPromiseResolveBlock)resolve
 
 RCT_EXTERN_METHOD(disableLocationFeatures)
 
-RCT_EXTERN_METHOD(isLoggedIn:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-
 RCT_EXTERN_METHOD(hasLocationPermission:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
-RCT_EXTERN_METHOD(provideToken:(NSString *)requestId
-                  token:(NSString *)token)
+RCT_EXTERN_METHOD(resolveAuthTokenRequest:(NSString *)requestId
+                  token:(NSString * _Nullable)token)
 
 @end
 
