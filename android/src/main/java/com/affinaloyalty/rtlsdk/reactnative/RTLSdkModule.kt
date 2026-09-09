@@ -1,11 +1,12 @@
-package com.affina.rtlsdk.reactnative
+package com.affinaloyalty.rtlsdk.reactnative
 
 import android.app.Activity
-import com.affina.rtlsdk.RTLSdkPermissionRequester
-import com.affina.rtlsdk.RTLSdk
-import com.affina.rtlsdk.RTLSdkListener
-import com.affina.rtlsdk.RTLStore
-import com.affina.rtlsdk.location.RTLLocationModule
+import android.net.Uri
+import com.affinaloyalty.rtlsdk.RTLSdkPermissionRequester
+import com.affinaloyalty.rtlsdk.RTLSdk
+import com.affinaloyalty.rtlsdk.RTLSdkListener
+import com.affinaloyalty.rtlsdk.RTLStore
+import com.affinaloyalty.rtlsdk.location.RTLLocationModule
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -30,11 +31,10 @@ class RTLSdkModule(
 ) : ReactContextBaseJavaModule(reactContext), RTLSdkListener {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val tokenRequests = ConcurrentHashMap<String, CompletableDeferred<String?>>()
+    private val authTokenRequests = ConcurrentHashMap<String, CompletableDeferred<String?>>()
     private val permissionRequester = RTLSdkPermissionRequester { activity, permissions, requestCode ->
         requestPermissions(activity, permissions, requestCode)
     }
-
     init {
         RTLSdk.getInstance().permissionRequester = permissionRequester
     }
@@ -45,17 +45,17 @@ class RTLSdkModule(
         if (RTLSdk.getInstance().permissionRequester === permissionRequester) {
             RTLSdk.getInstance().permissionRequester = null
         }
-        tokenRequests.values.forEach { deferred ->
+        authTokenRequests.values.forEach { deferred ->
             deferred.complete(null)
         }
-        tokenRequests.clear()
+        authTokenRequests.clear()
         scope.cancel()
         super.invalidate()
     }
 
     @ReactMethod
     fun initialize(options: ReadableMap, promise: Promise) {
-        val activity = currentActivity
+        val activity = reactApplicationContext.currentActivity
         if (activity == null) {
             promise.reject("activity_unavailable", "Cannot initialize RTL SDK without a current Activity")
             return
@@ -101,18 +101,15 @@ class RTLSdkModule(
     }
 
     @ReactMethod
-    fun login(token: String, options: ReadableMap?, promise: Promise) {
+    fun handleDeepLink(url: String, promise: Promise) {
+        val parsedUrl = runCatching { Uri.parse(url) }.getOrNull()
+        if (parsedUrl == null) {
+            promise.resolve(false)
+            return
+        }
+
         scope.launch {
-            try {
-                val result = RTLSdk.getInstance().login(
-                    token = token,
-                    rtlEventId = options?.getNullableString("rtlEventId"),
-                    rtlRedirectUrl = options?.getNullableString("rtlRedirectUrl")
-                )
-                promise.resolve(result.toWritableMap())
-            } catch (error: Throwable) {
-                promise.reject("login_failed", error)
-            }
+            promise.resolve(RTLSdk.getInstance().handleDeepLink(parsedUrl))
         }
     }
 
@@ -123,7 +120,7 @@ class RTLSdkModule(
 
     @ReactMethod
     fun enableLocationFeatures(promise: Promise) {
-        val activity = currentActivity
+        val activity = reactApplicationContext.currentActivity
         if (activity == null) {
             promise.reject("activity_unavailable", "Cannot enable location features without a current Activity")
             return
@@ -143,18 +140,13 @@ class RTLSdkModule(
     }
 
     @ReactMethod
-    fun isLoggedIn(promise: Promise) {
-        promise.resolve(RTLSdk.getInstance().isLoggedIn())
-    }
-
-    @ReactMethod
     fun hasLocationPermission(promise: Promise) {
         promise.resolve(RTLSdk.getInstance().hasLocationPermission)
     }
 
     @ReactMethod
-    fun provideToken(requestId: String, token: String?) {
-        tokenRequests.remove(requestId)?.complete(token)
+    fun resolveAuthTokenRequest(requestId: String, token: String?) {
+        authTokenRequests.remove(requestId)?.complete(token)
     }
 
     @ReactMethod
@@ -167,45 +159,32 @@ class RTLSdkModule(
         // Required by NativeEventEmitter.
     }
 
-    override suspend fun onNeedsToken(): String? {
+    override suspend fun provideAuthToken(): String? {
         val requestId = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<String?>()
-        tokenRequests[requestId] = deferred
+        authTokenRequests[requestId] = deferred
 
         val payload = Arguments.createMap().apply {
             putString("requestId", requestId)
         }
-        sendEvent("onNeedsToken", payload)
+        sendEvent("authTokenRequested", payload)
 
-        return withTimeoutOrNull(TOKEN_REQUEST_TIMEOUT_MS) {
+        return withTimeoutOrNull(AUTH_TOKEN_REQUEST_TIMEOUT_MS) {
             deferred.await()
         }.also {
-            tokenRequests.remove(requestId)
+            authTokenRequests.remove(requestId)
         }
-    }
-
-    override fun onAuthenticated(accessToken: String, refreshToken: String) {
-        val payload = Arguments.createMap().apply {
-            putString("accessToken", accessToken)
-            putString("refreshToken", refreshToken)
-        }
-        sendEvent("onAuthenticated", payload)
-    }
-
-    override fun onLogout() {
-        sendEvent("onLogout", null)
-    }
-
-    override fun onOpenUrl(url: String, forceExternal: Boolean) {
-        val payload = Arguments.createMap().apply {
-            putString("url", url)
-            putBoolean("forceExternal", forceExternal)
-        }
-        sendEvent("onOpenUrl", payload)
     }
 
     override fun onReady() {
         sendEvent("onReady", null)
+    }
+
+    override fun onLoadingStateChanged(isLoading: Boolean) {
+        val payload = Arguments.createMap().apply {
+            putBoolean("isLoading", isLoading)
+        }
+        sendEvent("onLoadingStateChanged", payload)
     }
 
     override val onLocationPermissionChange: ((granted: Boolean) -> Unit)? = { granted ->
@@ -244,7 +223,7 @@ class RTLSdkModule(
         requestCode: Int
     ) {
         val permissionAwareActivity = activity as? PermissionAwareActivity
-            ?: currentActivity as? PermissionAwareActivity
+            ?: reactApplicationContext.currentActivity as? PermissionAwareActivity
 
         if (permissionAwareActivity == null) {
             activity.requestPermissions(permissions, requestCode)
@@ -271,6 +250,6 @@ class RTLSdkModule(
 
     companion object {
         const val NAME = "RTLSdk"
-        private const val TOKEN_REQUEST_TIMEOUT_MS = 30_000L
+        private const val AUTH_TOKEN_REQUEST_TIMEOUT_MS = 30_000L
     }
 }
