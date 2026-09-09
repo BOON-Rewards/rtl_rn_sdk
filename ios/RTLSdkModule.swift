@@ -5,7 +5,7 @@ import RTLSdk
 @objc(RTLSdkModule)
 final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
     private var hasListeners = false
-    private var pendingTokenContinuations: [String: CheckedContinuation<String?, Never>] = [:]
+    private var pendingAuthTokenContinuations: [String: CheckedContinuation<String?, Never>] = [:]
 
     override static func requiresMainQueueSetup() -> Bool {
         true
@@ -13,10 +13,8 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
 
     override func supportedEvents() -> [String]! {
         [
-            "onNeedsToken",
-            "onAuthenticated",
-            "onLogout",
-            "onOpenUrl",
+            "authTokenRequested",
+            "onLoadingStateChanged",
             "onReady",
             "onLocationPermissionChange",
             "onGeofenceEnter"
@@ -73,20 +71,18 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         }
     }
 
-    @objc(login:options:resolver:rejecter:)
-    func login(
-        _ token: String,
-        options: NSDictionary?,
+    @objc(handleDeepLink:resolver:rejecter:)
+    func handleDeepLink(
+        _ urlValue: String,
         resolver resolve: @escaping RCTPromiseResolveBlock,
-        rejecter reject: @escaping RCTPromiseRejectBlock
+        rejecter reject: RCTPromiseRejectBlock
     ) {
+        guard let url = URL(string: urlValue) else {
+            resolve(false)
+            return
+        }
         Task { @MainActor in
-            let result = await RTLSdk.shared.login(
-                token: token,
-                rtlEventId: options?["rtlEventId"] as? String,
-                rtlRedirectUrl: options?["rtlRedirectUrl"] as? String
-            )
-            resolve(result.toDictionary())
+            resolve(RTLSdk.shared.handleDeepLink(url))
         }
     }
 
@@ -109,18 +105,6 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         RTLSdk.shared.disableLocationFeatures()
     }
 
-    @objc(isLoggedIn:rejecter:)
-    func isLoggedIn(
-        _ resolve: RCTPromiseResolveBlock,
-        rejecter reject: RCTPromiseRejectBlock
-    ) {
-        if let isLoggedIn = RTLSdk.shared.isLoggedIn() {
-            resolve(isLoggedIn)
-        } else {
-            resolve(NSNull())
-        }
-    }
-
     @objc(hasLocationPermission:rejecter:)
     func hasLocationPermission(
         _ resolve: RCTPromiseResolveBlock,
@@ -129,24 +113,24 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         resolve(RTLSdk.shared.hasLocationPermission)
     }
 
-    @objc(provideToken:token:)
-    func provideToken(_ requestId: String, token: String?) {
-        guard let continuation = pendingTokenContinuations.removeValue(forKey: requestId) else {
+    @objc(resolveAuthTokenRequest:token:)
+    func resolveAuthTokenRequest(_ requestId: String, token: String?) {
+        guard let continuation = pendingAuthTokenContinuations.removeValue(forKey: requestId) else {
             return
         }
         continuation.resume(returning: token)
     }
 
-    func onNeedsToken() async -> String? {
+    func provideAuthToken() async -> String? {
         await withCheckedContinuation { continuation in
             let requestId = UUID().uuidString
-            pendingTokenContinuations[requestId] = continuation
-            send("onNeedsToken", body: ["requestId": requestId])
+            pendingAuthTokenContinuations[requestId] = continuation
+            send("authTokenRequested", body: ["requestId": requestId])
 
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
                 await MainActor.run {
-                    guard let continuation = self?.pendingTokenContinuations.removeValue(forKey: requestId) else {
+                    guard let continuation = self?.pendingAuthTokenContinuations.removeValue(forKey: requestId) else {
                         return
                     }
                     continuation.resume(returning: nil)
@@ -155,26 +139,12 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         }
     }
 
-    func onAuthenticated(accessToken: String, refreshToken: String) {
-        send("onAuthenticated", body: [
-            "accessToken": accessToken,
-            "refreshToken": refreshToken
-        ])
-    }
-
-    func onLogout() {
-        send("onLogout", body: nil)
-    }
-
-    func onOpenUrl(url: URL, forceExternal: Bool) {
-        send("onOpenUrl", body: [
-            "url": url.absoluteString,
-            "forceExternal": forceExternal
-        ])
-    }
-
     func onReady() {
         send("onReady", body: nil)
+    }
+
+    func onLoadingStateChanged(isLoading: Bool) {
+        send("onLoadingStateChanged", body: ["isLoading": isLoading])
     }
 
     func onLocationPermissionChange(granted: Bool) {

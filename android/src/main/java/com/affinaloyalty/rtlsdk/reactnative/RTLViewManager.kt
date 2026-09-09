@@ -1,8 +1,8 @@
-package com.affina.rtlsdk.reactnative
+package com.affinaloyalty.rtlsdk.reactnative
 
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import com.affina.rtlsdk.RTLSdk
+import com.affinaloyalty.rtlsdk.RTLSdk
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 
