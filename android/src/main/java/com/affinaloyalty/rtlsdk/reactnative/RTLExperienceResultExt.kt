@@ -1,6 +1,6 @@
-package com.affina.rtlsdk.reactnative
+package com.affinaloyalty.rtlsdk.reactnative
 
-import com.affina.rtlsdk.RTLExperienceResult
+import com.affinaloyalty.rtlsdk.RTLExperienceResult
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableMap
 
