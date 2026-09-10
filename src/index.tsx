@@ -41,16 +41,8 @@ type RTLAuthTokenRequestEvent = {
   requestId: string;
 };
 
-export type RTLLocationPermissionChangeEvent = {
-  granted: boolean;
-};
-
 type RTLLoadingStateChangeEvent = {
   isLoading: boolean;
-};
-
-export type RTLGeofenceEnterEvent = {
-  store: Record<string, unknown>;
 };
 
 type RTLSdkNativeModule = {
@@ -81,8 +73,6 @@ let authTokenSubscription: EmitterSubscription | null = null;
 // NativeEventEmitter exposes untyped payloads; keep our native event contract here.
 type RTLEventMap = {
   onLoadingStateChanged: RTLLoadingStateChangeEvent;
-  onLocationPermissionChange: RTLLocationPermissionChangeEvent;
-  onGeofenceEnter: RTLGeofenceEnterEvent;
   authTokenRequested: RTLAuthTokenRequestEvent;
 };
 
@@ -112,13 +102,6 @@ const onLoadingStateChanged = (
     'onLoadingStateChanged',
     (event: RTLLoadingStateChangeEvent) => listener(event.isLoading)
   );
-
-const onLocationPermissionChange = (
-  listener: (event: RTLLocationPermissionChangeEvent) => void
-): EmitterSubscription => subscribe('onLocationPermissionChange', listener);
-
-const onGeofenceEnter = (listener: (event: RTLGeofenceEnterEvent) => void): EmitterSubscription =>
-  subscribe('onGeofenceEnter', listener);
 
 export const RTL = {
   initialize(options: RTLInitializeOptions) {
@@ -179,8 +162,6 @@ export const RTL = {
 
   onReady,
   onLoadingStateChanged,
-  onLocationPermissionChange,
-  onGeofenceEnter,
 };
 
 export default RTL;
