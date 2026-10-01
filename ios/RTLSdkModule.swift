@@ -34,9 +34,7 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         [
             "authTokenRequested",
             "onLoadingStateChanged",
-            "onReady",
-            "onLocationPermissionChange",
-            "onGeofenceEnter"
+            "onReady"
         ]
     }
 
@@ -185,16 +183,6 @@ final class RTLSdkModule: RCTEventEmitter, RTLSdkDelegate {
         send("onLoadingStateChanged", body: ["isLoading": isLoading])
     }
 
-    func onLocationPermissionChange(granted: Bool) {
-        send("onLocationPermissionChange", body: ["granted": granted])
-    }
-
-    func onGeofenceEnter(store: RTLStore) {
-        send("onGeofenceEnter", body: [
-            "store": store.toDictionary()
-        ])
-    }
-
     private func send(_ eventName: String, body: Any?) {
         let emit = { [self] in
             guard hasListeners else { return }
@@ -210,20 +198,6 @@ private extension RTLExperienceResult {
         [
             "success": success,
             "errorCode": errorCode as Any
-        ]
-    }
-}
-
-private extension RTLStore {
-    func toDictionary() -> [String: Any] {
-        [
-            "id": id,
-            "name": name,
-            "merchantId": merchantId,
-            "latitude": latitude,
-            "longitude": longitude,
-            "offerTitle": offerTitle as Any,
-            "offerDescription": offerDescription as Any
         ]
     }
 }
