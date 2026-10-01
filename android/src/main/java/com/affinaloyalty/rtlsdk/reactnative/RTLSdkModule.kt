@@ -5,7 +5,6 @@ import android.net.Uri
 import com.affinaloyalty.rtlsdk.RTLSdkPermissionRequester
 import com.affinaloyalty.rtlsdk.RTLSdk
 import com.affinaloyalty.rtlsdk.RTLSdkListener
-import com.affinaloyalty.rtlsdk.RTLStore
 import com.affinaloyalty.rtlsdk.location.RTLLocationModule
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -191,29 +190,6 @@ class RTLSdkModule(
             putBoolean("isLoading", isLoading)
         }
         sendEvent("onLoadingStateChanged", payload)
-    }
-
-    override val onLocationPermissionChange: ((granted: Boolean) -> Unit)? = { granted ->
-        val payload = Arguments.createMap().apply {
-            putBoolean("granted", granted)
-        }
-        sendEvent("onLocationPermissionChange", payload)
-    }
-
-    override val onGeofenceEnter: ((store: RTLStore) -> Unit)? = { store ->
-        val storePayload = Arguments.createMap().apply {
-            putString("id", store.id)
-            putString("name", store.name)
-            putString("merchantId", store.merchantId)
-            putDouble("latitude", store.latitude)
-            putDouble("longitude", store.longitude)
-            putString("offerTitle", store.offerTitle)
-            putString("offerDescription", store.offerDescription)
-        }
-        val payload = Arguments.createMap().apply {
-            putMap("store", storePayload)
-        }
-        sendEvent("onGeofenceEnter", payload)
     }
 
     private fun sendEvent(eventName: String, payload: Any?) {
