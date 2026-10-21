@@ -17,5 +17,5 @@ Pod::Spec.new do |s|
   s.dependency "React-Core"
   # The host Podfile supplies RTLSdk from its matching Git tag; it is not
   # published to CocoaPods trunk. See the official React Native setup guide.
-  s.dependency "RTLSdk", "3.1.0"
+  s.dependency "RTLSdk", "4.0.0"
 end
